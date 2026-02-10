@@ -17,4 +17,6 @@ public interface UserAnswerRepository extends JpaRepository<UserAnswer, Long> {
     boolean existsByQuizIdAndQuestionId(Long quizId, Long id);
 
     List<UserAnswer> findByQuizId(Long quizId);
+
+    long countByQuizId(Long quizId);
 }

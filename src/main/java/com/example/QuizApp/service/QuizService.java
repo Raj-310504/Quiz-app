@@ -16,10 +16,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Random;
 
 @Service
 public class QuizService {
+    private static final int MAX_QUESTIONS_PER_QUIZ = 5;
 
     @Autowired
     QuizRepository quizRepository;
@@ -65,18 +65,22 @@ public class QuizService {
             throw new QuizCompletedException("Quiz already completed");
         }
 
-        // already answered question IDs
-        List<Long> answeredIds =
-                userAnswerRepository.findAnsweredQuestionIdsByQuizId(quizId);
-        System.out.println(answeredIds);
+        long answeredCount = userAnswerRepository.countByQuizId(quizId);
+        if(answeredCount >= MAX_QUESTIONS_PER_QUIZ) {
+            quiz.setStatus(QuizStatus.COMPLETED);
+            quiz.setEndTime(LocalDateTime.now());
+            quizRepository.save(quiz);
 
-        // fetch unanswered questions
-        List<Question> unansweredQuestions =
-                answeredIds.isEmpty()
-                        ? questionRepository.findAll()
-                        : questionRepository.findByIdNotIn(answeredIds);
+            throw new NoMoreQuestionsException(
+                    "You have reached the maximum number of questions. Quiz completed!"
+            );
+        }
 
-        if(unansweredQuestions.isEmpty()) {
+        Question question = questionRepository
+                .findRandomUnansweredByQuizId(quizId)
+                .orElse(null);
+
+        if(question == null) {
             quiz.setStatus(QuizStatus.COMPLETED);
             quiz.setEndTime(LocalDateTime.now());
             quizRepository.save(quiz);
@@ -85,10 +89,6 @@ public class QuizService {
                     "You have answered all the questions. Quiz completed!"
             );
         }
-
-        // random pick
-        Question question = unansweredQuestions
-                .get(new Random().nextInt(unansweredQuestions.size()));
 
         return mapToQuestionResponse(question);
 
@@ -100,6 +100,10 @@ public class QuizService {
                 .orElseThrow(() -> new RuntimeException("Quiz not found"));
         Question question = questionRepository.findById(request.getQuestionId())
                 .orElseThrow(() -> new RuntimeException("Question not found"));
+
+        if(quiz.getStatus() == QuizStatus.COMPLETED) {
+            throw new QuizCompletedException("Quiz already completed");
+        }
 
 
         boolean alreadyAnswered =
@@ -120,6 +124,13 @@ public class QuizService {
         userAnswer.setCorrect(isCorrect);
 
         userAnswerRepository.save(userAnswer);
+
+        long answeredCount = userAnswerRepository.countByQuizId(quizId);
+        if(answeredCount >= MAX_QUESTIONS_PER_QUIZ) {
+            quiz.setStatus(QuizStatus.COMPLETED);
+            quiz.setEndTime(LocalDateTime.now());
+            quizRepository.save(quiz);
+        }
 
         return new AnswerResponseDTO(
                 isCorrect,
